@@ -15,6 +15,7 @@ ISTANBUL = ZoneInfo("Europe/Istanbul")
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 MGM_HEADERS = {"Accept": "application/json, text/plain, */*", "Origin": "https://www.mgm.gov.tr", "Referer": "https://www.mgm.gov.tr/"}
 HOURLY = "temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,pressure_msl,wind_speed_10m,wind_direction_10m,temperature_850hPa,weather_code"
+GFS_MODEL_ID = "ncep_gfs013"  # Global GFS 0.11°; includes surface and pressure-level fields.
 
 def now_utc():
     return datetime.now(timezone.utc).replace(microsecond=0)
@@ -177,14 +178,35 @@ class TextParser(HTMLParser):
         if clean: self.parts.append(clean)
 
 def after_label(text, label, unit=""):
-    # ENKA's table sometimes places the value immediately after a label
-    # without a real whitespace character, depending on its HTML markup.
-    position = text.casefold().find(label.casefold())
-    if position < 0:
-        return None
-    tail = text[position + len(label):position + len(label) + 100]
-    match = re.search(r"(-?\d+(?:[.,]\d+)?)", tail)
-    return num(match.group(1)) if match else None
+    """Read the current-value cell following an ENKA table label.
+
+    Do not use an index from casefold() to slice the original string: Unicode
+    case folding can change string length (notably Turkish dotted I).
+    Matching the label, numeric value and unit together avoids neighboring
+    high/low columns and explanatory text.
+    """
+    number = r"(-?\d{1,4}(?:[.,]\d+)?)"
+    suffix = {
+        "°C": r"\s*°\s*C",
+        "%": r"\s*%",
+        "mm": r"\s*mm\b",
+        "hPa": r""
+    }.get(unit, r"")
+    pattern = re.compile(re.escape(label) + r"\s*[:：]?\s*" + number + suffix, re.IGNORECASE)
+    for match in pattern.finditer(text):
+        value = num(match.group(1))
+        if value is None:
+            continue
+        if unit == "°C" and not -80 <= value <= 65:
+            continue
+        if unit == "%" and not 0 <= value <= 100:
+            continue
+        if unit == "mm" and not 0 <= value <= 2000:
+            continue
+        if unit == "hPa" and not 850 <= value <= 1100:
+            continue
+        return value
+    return None
 
 COMPASS = {"N":0,"NNE":22.5,"NE":45,"ENE":67.5,"E":90,"ESE":112.5,"SE":135,"SSE":157.5,"S":180,"SSW":202.5,"SW":225,"WSW":247.5,"W":270,"WNW":292.5,"NW":315,"NNW":337.5}
 
@@ -201,14 +223,16 @@ def collect_enka(now):
     text = html.unescape(" ".join(parser.parts))
     temp = after_label(text, "Günlük Sıcaklık", "°C")
     feel = after_label(text, "Hissedilen Sıcaklık", "°C")
-    pressure = after_label(text, "Barometre (hPa)")
+    pressure = after_label(text, "Barometre (hPa)", "hPa")
     humidity = after_label(text, "Bağıl Nem", "%")
     dew = after_label(text, "Yoğuşma Noktası", "°C")
     rain = after_label(text, "Günlük Yağış", "mm")
-    wind_pos = text.casefold().find("rüzgar")
-    wind_tail = text[wind_pos + len("rüzgar"):wind_pos + len("rüzgar") + 100] if wind_pos >= 0 else ""
-    wind = re.search(r"([A-Z]{1,3})\s+(-?\d+(?:[.,]\d+)?)\s*kt", wind_tail, re.I)
-    speed = num(wind.group(2)) * 1.852 if wind and num(wind.group(2)) is not None else None
+    wind = re.search(
+        r"\bRüzgar\s+(NNE|NE|ENE|E|ESE|SE|SSE|S|SSW|SW|WSW|W|WNW|NW|NNW|N)\s+(-?\d+(?:[.,]\d+)?)\s*kt\b",
+        text, re.IGNORECASE
+    )
+    knots = num(wind.group(2)) if wind else None
+    speed = knots * 1.852 if knots is not None else None
     direction = COMPASS.get(wind.group(1).upper()) if wind else None
     if temp is None and pressure is None and humidity is None:
         raise RuntimeError("ENKA page is missing expected Vantage Pro fields")
@@ -283,7 +307,7 @@ def aggregate_daily(hourly):
 def fetch_gfs(run_time):
     params = {
         "latitude":"41.014", "longitude":"28.950", "hourly":HOURLY,
-        "models":"ncep_gfs025", "run":run_time.strftime("%Y-%m-%dT%H:00"),
+        "models":GFS_MODEL_ID, "run":run_time.strftime("%Y-%m-%dT%H:00"),
         "forecast_days":"8", "timezone":"Europe/Istanbul",
         "wind_speed_unit":"kmh", "precipitation_unit":"mm", "temperature_unit":"celsius"
     }
@@ -292,11 +316,20 @@ def fetch_gfs(run_time):
     hourly = payload.get("hourly") if isinstance(payload, dict) else None
     if not isinstance(hourly, dict) or not hourly.get("time"):
         raise RuntimeError("GFS run %s has no hourly forecast" % run_time.isoformat())
+    # Reject incomplete model domains. The 0.25° pressure-only domain can
+    # return upper-air/pressure fields while surface fields are all null.
+    required = ("temperature_2m", "precipitation", "wind_speed_10m",
+                "wind_direction_10m", "temperature_850hPa", "pressure_msl")
+    missing = [key for key in required
+               if not any(num(value) is not None for value in hourly.get(key, []))]
+    if missing:
+        raise RuntimeError("GFS run %s is incomplete; no usable values for: %s"
+                           % (run_time.isoformat(), ", ".join(missing)))
     if abs(float(payload.get("latitude", 41.014)) - 41.014) > 0.2 or abs(float(payload.get("longitude", 28.950)) - 28.950) > 0.2:
         raise RuntimeError("GFS service returned unexpected coordinates")
     return {
         "run":run_time.strftime("%Y-%m-%dT%H:%MZ"), "run_cycle":run_time.strftime("%H")+"Z",
-        "fetched_at":stamp(), "model":"NCEP GFS 0.25°", "model_id":"ncep_gfs025",
+        "fetched_at":stamp(), "model":"NCEP GFS 0.11°", "model_id":GFS_MODEL_ID,
         "source":"Open-Meteo Single Runs API · NCEP GFS 0.25°",
         "latitude":payload.get("latitude"), "longitude":payload.get("longitude"),
         "elevation":payload.get("elevation"), "timezone":payload.get("timezone","Europe/Istanbul"),
@@ -306,7 +339,11 @@ def fetch_gfs(run_time):
     }
 
 def collect_gfs(existing, now):
-    by_run = {item.get("run"):item for item in existing if isinstance(item,dict) and item.get("run")}
+    # Keep only runs from the active model. This prevents an old 0.25°
+    # pressure-only output from being mixed with the new 0.11° surface run.
+    by_run = {item.get("run"):item for item in existing
+              if isinstance(item,dict) and item.get("run")
+              and item.get("model_id") == GFS_MODEL_ID}
     errors = []
     for candidate in cycle_candidates(now):
         key = candidate.strftime("%Y-%m-%dT%H:%MZ")
@@ -350,7 +387,7 @@ def main():
     runs, gfs_errors = collect_gfs(old_runs if isinstance(old_runs,list) else [], now)
     dashboard["gfs"] = {
         "status":"ok" if runs else "unavailable", "updated_at":stamp(now) if runs else None,
-        "source":"NCEP GFS 0.25° · Open-Meteo Single Runs API",
+        "source":"NCEP GFS 0.11° · Open-Meteo Single Runs API",
         "requested_coordinates":{"latitude":41.014,"longitude":28.950},
         "last_error":gfs_errors[0]["error"] if gfs_errors and not runs else None,
         "recent_errors":gfs_errors, "runs":runs
