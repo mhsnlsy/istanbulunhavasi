@@ -26,6 +26,7 @@ jobs:
       - name: Validate generated application and data
         run: |
           python -m py_compile scripts/collect_weather.py
+          python -m unittest discover -s tests -v
           node --check assets/app.js
           python -m json.tool data/dashboard.json >/dev/null
           python -m json.tool data/mgm-18101.json >/dev/null
