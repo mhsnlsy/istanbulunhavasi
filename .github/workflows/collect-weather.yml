@@ -1,0 +1,38 @@
+name: Collect live weather data
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: weather-collector
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Collect MGM, ENKA and GFS data
+        run: python scripts/collect_weather.py
+      - name: Validate generated data
+        run: |
+          python -m py_compile scripts/collect_weather.py
+          python -m json.tool data/dashboard.json >/dev/null
+          python -m json.tool data/mgm-18101.json >/dev/null
+          python -m json.tool data/enka-balmumcu.json >/dev/null
+      - name: Commit observations and model runs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/dashboard.json data/mgm-18101.json data/enka-balmumcu.json
+          if git diff --cached --quiet; then
+            echo "No new weather samples to publish."
+          else
+            git commit -m "chore(data): archive Istanbul weather observations"
+            git push origin main
+          fi
