@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 DASHBOARD = DATA / "dashboard.json"
 ISTANBUL = ZoneInfo("Europe/Istanbul")
-UA = "IstanbulunHavasi/4.0 (+https://github.com/mhsnlsy/istanbulunhavasi)"
+UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 MGM_HEADERS = {"Accept": "application/json, text/plain, */*", "Origin": "https://www.mgm.gov.tr", "Referer": "https://www.mgm.gov.tr/"}
 HOURLY = "temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,pressure_msl,wind_speed_10m,wind_direction_10m,temperature_850hPa"
 DAILY = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max"
@@ -38,8 +38,8 @@ def fetch(url, headers=None, timeout=25):
         if response.status != 200: raise RuntimeError("HTTP %s: %s" % (response.status, url))
         return response.read()
 
-def fetch_json(url, headers=None):
-    try: return json.loads(fetch(url, headers).decode("utf-8-sig"))
+def fetch_json(url, headers=None, timeout=25):
+    try: return json.loads(fetch(url, headers, timeout).decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError) as exc: raise RuntimeError("Invalid JSON response: %s" % exc) from exc
 
 def num(value):
@@ -76,13 +76,64 @@ def add_sample(station, now):
     station["history"] = trim_history(history, now)
 
 def collect_mgm(now):
-    data = fetch_json("https://servis.mgm.gov.tr/web/sondurumlar?merkezid=18101", MGM_HEADERS)
+    # 18101 is the MGM station number (sondurumIstNo), not necessarily
+    # the centerId parameter accepted by /sondurumlar.
+    candidates = []
+    endpoints = [
+        "https://servis.mgm.gov.tr/web/merkezler?il=istanbul&ilce=eyup",
+        "https://servis.mgm.gov.tr/web/merkezler?il=istanbul&ilce=eyupsultan",
+        "https://servis.mgm.gov.tr/web/merkezler/ililcesi?il=istanbul",
+        "https://servis.mgm.gov.tr/web/istasyonlar"
+    ]
+    seen = set()
+    selected = None
+    for endpoint in endpoints:
+        try:
+            payload = fetch_json(endpoint, MGM_HEADERS, timeout=12)
+            rows = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                marker = json.dumps(item, sort_keys=True, ensure_ascii=False)
+                if marker not in seen:
+                    candidates.append(item)
+                    seen.add(marker)
+        except Exception as exc:
+            print("MGM station directory unavailable:", endpoint, exc, file=sys.stderr)
+
+        for item in candidates:
+            station_no = next((item.get(key) for key in
+                ("sondurumIstNo", "istNo", "istno", "istasyonNo", "istasyon_no")
+                if item.get(key) is not None), None)
+            center_id = item.get("merkezId") or item.get("merkezid")
+            if str(station_no) == "18101" and center_id is not None:
+                selected = item
+                break
+        if selected is not None:
+            break
+    if selected is None:
+        raise RuntimeError(
+            "MGM directory did not resolve station 18101 to a current centerId; "
+            "no nearby station was substituted."
+        )
+
+    center_id = selected.get("merkezId") or selected.get("merkezid")
+    data = fetch_json(
+        "https://servis.mgm.gov.tr/web/sondurumlar?merkezid=" + urllib.parse.quote(str(center_id)),
+        MGM_HEADERS
+    )
     if not isinstance(data, list) or not data or not isinstance(data[0], dict):
-        raise RuntimeError("MGM 18101 returned no current observation")
+        raise RuntimeError("MGM center %s has no current observation for station 18101" % center_id)
     row = data[0]
-    returned = row.get("merkezId") or row.get("merkezid") or row.get("istno") or row.get("istasyonNo")
-    if returned is not None and str(returned) != "18101":
-        raise RuntimeError("MGM identity mismatch: returned station %s" % returned)
+    returned_station = next((row.get(key) for key in
+        ("istNo", "istno", "sondurumIstNo", "istasyonNo")
+        if row.get(key) is not None), None)
+    if returned_station is not None and str(returned_station) != "18101":
+        raise RuntimeError(
+            "MGM identity mismatch: centerId %s returned station %s, not 18101"
+            % (center_id, returned_station)
+        )
+
     temp, humidity = num(row.get("sicaklik")), num(row.get("nem"))
     station_pressure = num(row.get("aktuelBasinc"))
     sea_pressure = num(row.get("denizeIndirgenmisBasinc"))
@@ -103,8 +154,10 @@ def collect_mgm(now):
         raise RuntimeError("MGM response has no usable measurements")
     observed = row.get("veriZamani") or row.get("olcumZamani")
     return {
-        "station_id": "18101", "station_name": "Eyüpsultan", "latitude": 41.10,
-        "longitude": 28.55, "elevation_m": 54, "source": "MGM · servis.mgm.gov.tr",
+        "station_id": "18101", "station_center_id": center_id,
+        "station_name": "Eyüpsultan", "latitude": 41.10,
+        "longitude": 28.55, "elevation_m": 54,
+        "source": "MGM · 18101 · servis.mgm.gov.tr",
         "status": "ok", "updated_at": observed or stamp(now), "recorded_at": stamp(now),
         "source_time": observed, "current": current, "error": None
     }
@@ -159,7 +212,7 @@ def cycle_candidates(now):
     # GFS runs at 00Z/06Z/12Z/18Z; allow three hours for routine publication.
     cursor = now - timedelta(hours=3)
     cursor = cursor.replace(hour=(cursor.hour // 6)*6, minute=0, second=0, microsecond=0)
-    return [cursor - timedelta(hours=6*i) for i in range(24)]
+    return [cursor - timedelta(hours=6*i) for i in range(12)]
 
 def fetch_gfs(run_time):
     params = {
@@ -169,7 +222,7 @@ def fetch_gfs(run_time):
         "wind_speed_unit":"kmh", "precipitation_unit":"mm", "temperature_unit":"celsius"
     }
     url = "https://single-runs-api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(params)
-    payload = fetch_json(url, {"Accept":"application/json"})
+    payload = fetch_json(url, {"Accept":"application/json"}, timeout=18)
     hourly = payload.get("hourly") if isinstance(payload, dict) else None
     if not isinstance(hourly, dict) or not hourly.get("time"):
         raise RuntimeError("GFS run %s has no hourly forecast" % run_time.isoformat())
