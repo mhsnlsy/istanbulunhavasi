@@ -5,13 +5,15 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  pages: write
+  id-token: write
 concurrency:
   group: weather-collector
   cancel-in-progress: false
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,6 +24,7 @@ jobs:
       - name: Validate generated data
         run: |
           python -m py_compile scripts/collect_weather.py
+          node --check assets/app.js
           python -m json.tool data/dashboard.json >/dev/null
           python -m json.tool data/mgm-18101.json >/dev/null
           python -m json.tool data/enka-balmumcu.json >/dev/null
@@ -36,3 +39,19 @@ jobs:
             git commit -m "chore(data): archive Istanbul weather observations"
             git push origin main
           fi
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload dashboard artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+  deploy:
+    runs-on: ubuntu-latest
+    needs: collect
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish dashboard
+        id: deployment
+        uses: actions/deploy-pages@v4
