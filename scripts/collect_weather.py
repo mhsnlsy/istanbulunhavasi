@@ -172,8 +172,13 @@ class TextParser(HTMLParser):
         if clean: self.parts.append(clean)
 
 def after_label(text, label, unit=""):
-    pattern = re.escape(label) + r"\s+(-?\d+(?:[.,]\d+)?)\s*" + re.escape(unit)
-    match = re.search(pattern, text, flags=re.IGNORECASE)
+    # ENKA's table sometimes places the value immediately after a label
+    # without a real whitespace character, depending on its HTML markup.
+    position = text.casefold().find(label.casefold())
+    if position < 0:
+        return None
+    tail = text[position + len(label):position + len(label) + 100]
+    match = re.search(r"(-?\d+(?:[.,]\d+)?)", tail)
     return num(match.group(1)) if match else None
 
 COMPASS = {"N":0,"NNE":22.5,"NE":45,"ENE":67.5,"E":90,"ESE":112.5,"SE":135,"SSE":157.5,"S":180,"SSW":202.5,"SW":225,"WSW":247.5,"W":270,"WNW":292.5,"NW":315,"NNW":337.5}
@@ -188,7 +193,9 @@ def collect_enka(now):
     humidity = after_label(text, "Bağıl Nem", "%")
     dew = after_label(text, "Yoğuşma Noktası", "°C")
     rain = after_label(text, "Günlük Yağış", "mm")
-    wind = re.search(r"Rüzgar\s+([A-Z]{1,3})\s+(-?\d+(?:[.,]\d+)?)\s*kt", text, re.I)
+    wind_pos = text.casefold().find("rüzgar")
+    wind_tail = text[wind_pos + len("rüzgar"):wind_pos + len("rüzgar") + 100] if wind_pos >= 0 else ""
+    wind = re.search(r"([A-Z]{1,3})\s+(-?\d+(?:[.,]\d+)?)\s*kt", wind_tail, re.I)
     speed = num(wind.group(2)) * 1.852 if wind and num(wind.group(2)) is not None else None
     direction = COMPASS.get(wind.group(1).upper()) if wind else None
     if temp is None and pressure is None and humidity is None:
@@ -242,6 +249,7 @@ def fetch_gfs(run_time):
 
 def collect_gfs(existing, now):
     by_run = {item.get("run"):item for item in existing if isinstance(item,dict) and item.get("run")}
+    errors = []
     for candidate in cycle_candidates(now):
         key = candidate.strftime("%Y-%m-%dT%H:%MZ")
         if key not in by_run:
@@ -249,9 +257,12 @@ def collect_gfs(existing, now):
                 by_run[key] = fetch_gfs(candidate)
                 print("GFS archive added:", key)
             except (urllib.error.URLError, TimeoutError, RuntimeError, ValueError, KeyError) as exc:
-                print("GFS not available yet:", key, exc, file=sys.stderr)
+                message = str(exc)
+                errors.append({"run":key, "error":message[:500]})
+                print("GFS not available yet:", key, message, file=sys.stderr)
         if len(by_run) >= 4: break
-    return sorted(by_run.values(), key=lambda item:item.get("run",""), reverse=True)[:4]
+    runs = sorted(by_run.values(), key=lambda item:item.get("run",""), reverse=True)[:4]
+    return runs, errors[:6]
 
 def refresh_station(previous, collector, now, label):
     try:
@@ -278,11 +289,13 @@ def main():
     stations["mgm"] = refresh_station(stations.get("mgm",{}), collect_mgm, now, "MGM Eyüpsultan 18101")
     stations["enka"] = refresh_station(stations.get("enka",{}), collect_enka, now, "ENKA Balmumcu")
     old_runs = dashboard.get("gfs",{}).get("runs",[]) if isinstance(dashboard.get("gfs"),dict) else []
-    runs = collect_gfs(old_runs if isinstance(old_runs,list) else [], now)
+    runs, gfs_errors = collect_gfs(old_runs if isinstance(old_runs,list) else [], now)
     dashboard["gfs"] = {
         "status":"ok" if runs else "unavailable", "updated_at":stamp(now) if runs else None,
         "source":"NCEP GFS 0.25° · Open-Meteo Single Runs API",
-        "requested_coordinates":{"latitude":41.014,"longitude":28.950}, "runs":runs
+        "requested_coordinates":{"latitude":41.014,"longitude":28.950},
+        "last_error":gfs_errors[0]["error"] if gfs_errors and not runs else None,
+        "recent_errors":gfs_errors, "runs":runs
     }
     dashboard["schema_version"] = 1
     dashboard["updated_at"] = stamp(now)
