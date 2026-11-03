@@ -283,7 +283,7 @@ def aggregate_daily(hourly):
 def fetch_gfs(run_time):
     params = {
         "latitude":"41.014", "longitude":"28.950", "hourly":HOURLY,
-        "models":"ncep_gfs_global", "run":run_time.strftime("%Y-%m-%dT%H:00"),
+        "models":"ncep_gfs025", "run":run_time.strftime("%Y-%m-%dT%H:00"),
         "forecast_days":"8", "timezone":"Europe/Istanbul",
         "wind_speed_unit":"kmh", "precipitation_unit":"mm", "temperature_unit":"celsius"
     }
@@ -296,7 +296,7 @@ def fetch_gfs(run_time):
         raise RuntimeError("GFS service returned unexpected coordinates")
     return {
         "run":run_time.strftime("%Y-%m-%dT%H:%MZ"), "run_cycle":run_time.strftime("%H")+"Z",
-        "fetched_at":stamp(), "model":"NCEP GFS Global 0.11°/0.25°", "model_id":"ncep_gfs_global",
+        "fetched_at":stamp(), "model":"NCEP GFS 0.25°", "model_id":"ncep_gfs025",
         "source":"Open-Meteo Single Runs API · NCEP GFS 0.25°",
         "latitude":payload.get("latitude"), "longitude":payload.get("longitude"),
         "elevation":payload.get("elevation"), "timezone":payload.get("timezone","Europe/Istanbul"),
@@ -350,7 +350,7 @@ def main():
     runs, gfs_errors = collect_gfs(old_runs if isinstance(old_runs,list) else [], now)
     dashboard["gfs"] = {
         "status":"ok" if runs else "unavailable", "updated_at":stamp(now) if runs else None,
-        "source":"NCEP GFS Global 0.11°/0.25° · Open-Meteo Single Runs API",
+        "source":"NCEP GFS 0.25° · Open-Meteo Single Runs API",
         "requested_coordinates":{"latitude":41.014,"longitude":28.950},
         "last_error":gfs_errors[0]["error"] if gfs_errors and not runs else None,
         "recent_errors":gfs_errors, "runs":runs
