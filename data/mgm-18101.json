@@ -1,0 +1,17 @@
+{
+  "station_id": "18101",
+  "station_name": "Eyüpsultan",
+  "source": "MGM station feed",
+  "status": "unconfigured",
+  "updated_at": null,
+  "temperature": null,
+  "feels_like": null,
+  "humidity": null,
+  "wind_speed": null,
+  "wind_direction": null,
+  "dew_point": null,
+  "rain": null,
+  "pressure": null,
+  "history": [],
+  "note": "MGM 18101 veri uç noktası doğrulanıp yapılandırılana kadar sahte değer yayımlanmaz."
+}
