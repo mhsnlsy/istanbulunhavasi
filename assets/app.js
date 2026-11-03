@@ -1,23 +1,127 @@
-/* Istanbul'un Havasi 4.0 — source-separated client dashboard */
-const $=s=>document.querySelector(s);
-const state={station:'mgm',gfs:null,enka:null,mgm:null,history:[],timer:null};
-const fmt=(v,d=1)=>Number.isFinite(Number(v))?Number(v).toFixed(d).replace('.',','):'—';
-const windDir=d=>{if(!Number.isFinite(Number(d)))return '—';return ['K','KKD','KD','DKD','D','DGD','GD','GGD','G','GGB','GB','BGB','B','BKB','KB','KKB'][Math.round(Number(d)/22.5)%16]};
-const dateLabel=t=>new Date(t).toLocaleString('tr-TR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-const safe=(v,u='')=>Number.isFinite(Number(v))?fmt(v)+u:'—';
-function chart(id,series,opts={}){const c=$(id);if(!c)return;const ctx=c.getContext('2d'),w=c.clientWidth||300,h=c.clientHeight||120,dpr=Math.min(devicePixelRatio||1,2);c.width=w*dpr;c.height=h*dpr;ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);const pad={l:29,r:7,t:9,b:20},W=w-pad.l-pad.r,H=h-pad.t-pad.b;ctx.font='8px Manrope';ctx.fillStyle='#8ba5b1';ctx.strokeStyle='#1d3949';ctx.lineWidth=1;
-const arrays=series.map(s=>s.values.filter(v=>Number.isFinite(Number(v))).map(Number));const all=arrays.flat();if(!all.length){ctx.fillText('Veri bekleniyor',pad.l+8,h/2);return}
-let min=opts.min??Math.min(...all),max=opts.max??Math.max(...all);if(min===max){min-=1;max+=1}const span=max-min;min-=span*.1;max+=span*.1;
-for(let i=0;i<4;i++){let y=pad.t+H*i/3;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();ctx.fillText(fmt(max-(max-min)*i/3,0),2,y+3)}
-const n=Math.max(...series.map(s=>s.values.length),2);series.forEach((s,si)=>{const valid=s.values.map(v=>Number(v));ctx.beginPath();ctx.strokeStyle=s.color||['#75d7d1','#73bce9','#e6b76d','#b996e6'][si%4];ctx.lineWidth=1.7;let started=false;valid.forEach((v,i)=>{if(!Number.isFinite(v)){started=false;return}let x=pad.l+W*i/(n-1),y=pad.t+H*(max-v)/(max-min);if(!started){ctx.moveTo(x,y);started=true}else ctx.lineTo(x,y)});ctx.stroke();if(opts.points){valid.forEach((v,i)=>{if(!Number.isFinite(v))return;let x=pad.l+W*i/(n-1),y=pad.t+H*(max-v)/(max-min);ctx.fillStyle=s.color||'#75d7d1';ctx.fillRect(x-1.5,y-1.5,3,3)})}});ctx.fillStyle='#8ba5b1';[0,Math.floor((n-1)/2),n-1].forEach(i=>{let x=pad.l+W*i/(n-1);ctx.fillText(opts.labels?.[i]||'',Math.min(Math.max(x-12,pad.l),w-39),h-4)})}
-function barChart(id,values,labels,color='#75d7d1'){const c=$(id);if(!c)return;const ctx=c.getContext('2d'),w=c.clientWidth||300,h=c.clientHeight||150,dpr=Math.min(devicePixelRatio||1,2);c.width=w*dpr;c.height=h*dpr;ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);const p={l:26,r:6,t:8,b:23},W=w-p.l-p.r,H=h-p.t-p.b,nums=values.filter(Number.isFinite);if(!nums.length){ctx.fillStyle='#8ba5b1';ctx.font='9px Manrope';ctx.fillText('Veri bekleniyor',p.l+8,h/2);return}let max=Math.max(...nums,1)*1.15;ctx.font='8px Manrope';ctx.fillStyle='#8ba5b1';for(let j=0;j<4;j++){let y=p.t+H*j/3;ctx.strokeStyle='#1d3949';ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText(fmt(max*(1-j/3),0),1,y+3)}let step=W/values.length,bw=Math.max(2,step*.48);values.forEach((v,i)=>{if(!Number.isFinite(v))return;let bh=H*v/max,x=p.l+i*step+(step-bw)/2,y=p.t+H-bh;ctx.fillStyle=color;ctx.fillRect(x,y,bw,bh);if(i%Math.ceil(values.length/6)===0){ctx.fillStyle='#a6bbc4';ctx.fillText(labels[i]||'',x-8,h-5)}})}
-function updateStationCard(data,source){const keys={temp:['temperature','temperature_2m','temp'],feels:['feels_like','apparent_temperature'],humidity:['humidity','relative_humidity_2m'],wind:['wind_speed','wind_speed_10m'],direction:['wind_direction','wind_direction_10m'],dew:['dew_point','dew_point_2m'],rain:['rain','precipitation','daily_rain'],pressure:['pressure','pressure_msl','barometer']};const pick=names=>{for(const k of names)if(data&&data[k]!==undefined&&data[k]!==null)return data[k];return null};const val=k=>pick(keys[k]);$('#station-temp').textContent=val('temp')===null?'—':fmt(val('temp'))+'°';$('#feels').textContent=val('feels')===null?'—':fmt(val('feels'))+'°';$('#humidity').textContent=val('humidity')===null?'—':fmt(val('humidity'),0)+'%';$('#wind').textContent=val('wind')===null?'—':fmt(val('wind'))+' km/sa '+windDir(val('direction'));$('#dew').textContent=val('dew')===null?'—':fmt(val('dew'))+'°';$('#rain').textContent=val('rain')===null?'—':fmt(val('rain'))+' mm';$('#pressure').textContent=val('pressure')===null?'—':fmt(val('pressure'))+' hPa';$('#station-source').textContent=source;$('#station-updated').textContent=data?.updated_at?'Son ölçüm: '+dateLabel(data.updated_at):'Güncel ölçüm';$('#station-age').textContent=data?.updated_at?'Kaynak zaman damgası':'Canlı veri';$('#station-icon').textContent=Number(val('temp'))<5?'❄':Number(val('rain'))>0?'🌧':'☁'}
-function renderHistory(points){state.history=Array.isArray(points)?points:[];chart('#historyChart',[{values:points.map(p=>p.temperature),color:'#75d7d1'}],{points:true});$('#history-note').textContent=points.length?points.length+' gerçek gözlem noktası':'İstasyon geçmiş verisi henüz mevcut değil'}
-function renderGfs(d){state.gfs=d;const h=d.hourly||{},times=h.time||[];const idx=times.map((t,i)=>({t,i})).filter(x=>new Date(x.t)>=new Date(Date.now()-3600000)&&new Date(x.t)<=new Date(Date.now()+72*3600000));const take=k=>idx.map(x=>h[k]?.[x.i]??null),labs=idx.map(x=>new Date(x.t).toLocaleTimeString('tr-TR',{hour:'2-digit'}));const labelIdx=idx.map((x,i)=>i%8===0?new Date(x.t).toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit'}):'');chart('#tempChart',[{values:take('temperature_2m'),color:'#75d7d1'}],{labels:labelIdx});chart('#rainChart',[{values:take('precipitation'),color:'#e6b76d'}],{labels:labelIdx,min:0});chart('#chart2m',[{values:take('temperature_2m'),color:'#75d7d1'}],{labels:labelIdx});chart('#chartPrecip',[{values:take('precipitation'),color:'#75d7d1'}],{labels:labelIdx,min:0});chart('#chartWind',[{values:take('wind_speed_10m'),color:'#75d7d1'}],{labels:labelIdx,min:0});chart('#chart850',[{values:take('temperature_850hPa'),color:'#b996e6'}],{labels:labelIdx});$('#run-label').textContent='GFS · '+(d.generationtime_ms?'güncel':'son erişilen çıktı');$('#report-time').textContent='Veri zamanı: '+(d.current_weather?.time||times[0]||'—');$('#model-status').style.background='#85d6c4';$('#report-summary').textContent='GFS veri seti başarıyla alındı. Sıcaklık, yağış ve 10 m rüzgâr tahminleri gösteriliyor; saatlik ham değerler korunmuştur.';$('#written-report').textContent='Tahmin aralığı '+(times[0]||'—')+' ile '+(times.at(-1)||'—')+' arasında. Sıcaklık, yağış ve rüzgâr grafiklerini yukarıdan inceleyebilirsiniz.';const rain=idx.map((x,i)=>({t:x.t,v:h.precipitation?.[x.i]??0})).filter(x=>x.v>=.2);$('#rain-events').textContent=rain.length?rain.slice(0,8).map(x=>dateLabel(x.t)+' · '+fmt(x.v)+' mm').join('  |  '):'Önümüzdeki 72 saatte anlamlı yağış sinyali yok.';$('#divergence-text').textContent='Tek model kaynağı seçili: GFS. ECMWF karşılaştırması bu sürümde devrede değil.';const p=h.pressure_msl||[];if(p.length){let first=p[0],last=p.at(-1),delta=last-first;$('#pressure-analysis').textContent='İstanbul çevresinde deniz seviyesi basıncı '+fmt(first)+' hPa seviyesinden '+fmt(last)+' hPa seviyesine değişiyor ('+(delta>0?'+':'')+fmt(delta)+' hPa). '+(delta>2?'Basınç yükselişi':delta< -2?'Basınç düşüşü':'Belirgin basınç değişimi yok')+'. Bölgesel merkez sınıflaması için sinoptik alan analizi henüz eklenmedi.'}renderDaily(d.daily||{})}
-function renderDaily(d){const days=d.time||[];if(!days.length)return;const el=$('#daily-grid');el.innerHTML='';days.slice(0,8).forEach((t,i)=>{const card=document.createElement('div');card.className='daily-card';const code=d.weather_code?.[i],icon=code===0?'☀':code<3?'🌤':code<50?'☁':code<70?'🌧':code<80?'🌨':'⛈';card.innerHTML='<b>'+new Date(t).toLocaleDateString('tr-TR',{weekday:'short'})+'</b><div class="weather-icon">'+icon+'</div><div class="temps">'+fmt(d.temperature_2m_max?.[i],0)+'° / '+fmt(d.temperature_2m_min?.[i],0)+'°</div><small>💧 '+fmt(d.precipitation_sum?.[i])+' mm</small><small>↗ '+fmt(d.wind_speed_10m_max?.[i],0)+' km/sa</small>';el.append(card)})}
-async function loadForecast(){const url='https://api.open-meteo.com/v1/gfs?latitude=41.014&longitude=28.950&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,precipitation_probability,pressure_msl,wind_speed_10m,wind_direction_10m,temperature_850hPa&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&forecast_days=8&timezone=Europe%2FIstanbul';const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('GFS API HTTP '+r.status);const d=await r.json();if(!d.hourly?.time?.length)throw Error('GFS hourly data is empty');renderGfs(d)}
-async function loadEnka(){const r=await fetch('https://w.enka.com/weather/currentvaluestr.html',{cache:'no-store'});if(!r.ok)throw Error('ENKA HTTP '+r.status);const html=await r.text(),doc=new DOMParser().parseFromString(html,'text/html'),text=doc.body.innerText.replace(/\s+/g,' ');const get=re=>{const m=text.match(re);return m?Number(m[1].replace(',','.')):null};const temp=get(/Günlük Sıcaklık\s+([\d.,-]+)°C/),pressure=get(/Barometre \(hPa\)\s+([\d.,-]+)/),humidity=get(/Bağıl Nem\s+([\d.,-]+)%/),rain=get(/Günlük Yağış\s+([\d.,-]+)\s*mm/),dew=get(/Yoğuşma Noktası\s+([\d.,-]+)°C/);const wind=text.match(/Rüzgar\s+([A-ZÇĞİÖŞÜ]+)\s+([\d.,-]+)\s+kt/i);if(temp===null&&pressure===null)throw Error('ENKA table parse failed');return {temperature:temp,pressure,humidity,rain,dew,wind_speed:wind?Number(wind[2].replace(',','.'))*1.852:null,updated_at:new Date().toISOString()}}
-async function loadMgm(){const url='./data/mgm-18101.json';const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('MGM 18101 station feed unavailable');const d=await r.json();if(!d.station_id||String(d.station_id)!=='18101')throw Error('MGM station identity mismatch');return d}
-async function chooseStation(id){state.station=id;document.querySelectorAll('[data-station]').forEach(b=>b.classList.toggle('selected',b.dataset.station===id));const title=id==='enka'?'ENKA Balmumcu · İstanbul':'Eyüpsultan · İstanbul';$('.station-title h2').textContent=title;try{if(id==='enka'){state.enka=state.enka||await loadEnka();updateStationCard(state.enka,'ENKA Balmumcu · Vantage PRO');renderHistory([])}else{state.mgm=state.mgm||await loadMgm();updateStationCard(state.mgm,'MGM · 18101');renderHistory(state.mgm.history||[])}}catch(e){$('#station-temp').textContent='—';$('#station-updated').textContent=e.message;$('#station-source').textContent=id==='mgm'?'MGM · 18101':'ENKA Balmumcu';$('#station-age').textContent='Veri alınamadı';['#feels','#wind','#humidity','#dew','#rain','#pressure'].forEach(k=>$(k).textContent='—');renderHistory([])}}
-async function refreshAll(){const btn=$('#refresh');btn.disabled=true;btn.textContent='↻ Yenileniyor…';try{await loadForecast()}catch(e){$('#run-label').textContent='GFS verisi alınamadı';$('#model-status').style.background='#e7a16d';$('#report-summary').textContent='GFS kaynağına erişilemedi: '+e.message}state.enka=null;state.mgm=null;await chooseStation(state.station);btn.disabled=false;btn.textContent='↻ Verileri yenile'}
-document.querySelectorAll('[data-station]').forEach(b=>b.addEventListener('click',()=>chooseStation(b.dataset.station)));$('#refresh').addEventListener('click',refreshAll);window.addEventListener('resize',()=>{if(state.gfs)renderGfs(state.gfs);renderHistory(state.history)});refreshAll();state.timer=setInterval(refreshAll,5*60*1000);
+/* Istanbul'un Havasi 4.0 — dashboard uses server-collected JSON snapshots. */
+const $ = (s) => document.querySelector(s);
+const state = { station: "mgm", dashboard: null, timer: null };
+const COLORS = ["#75d7d1", "#73bce9", "#e6b76d", "#b996e6"];
+const valid = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
+const fmt = (v, d=1) => valid(v) ? Number(v).toFixed(d).replace(".", ",") : "—";
+const direction = (n) => valid(n) ? ["K","KKD","KD","DKD","D","DGD","GD","GGD","G","GGB","GB","BGB","B","BKB","KB","KKB"][Math.round(Number(n)/22.5)%16] : "—";
+const shortDate = (v) => { const d=new Date(v); return Number.isNaN(d.getTime())?"":d.toLocaleDateString("tr-TR",{day:"2-digit",month:"2-digit"}); };
+const dateLabel = (v) => { if(!v)return "—"; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString("tr-TR",{weekday:"short",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}); };
+
+function legend(canvas, series) {
+  const host=canvas?.parentElement; if(!host)return;
+  let el=host.querySelector(".series-legend");
+  if(!el){el=document.createElement("div");el.className="series-legend";host.insertBefore(el,canvas);}
+  el.replaceChildren();
+  series.forEach((s)=>{const span=document.createElement("span"),line=document.createElement("i");line.style.background=s.color;span.append(line,document.createTextNode(s.label||"GFS"));el.append(span);});
+}
+
+function drawChart(selector, series, options={}) {
+  const c=$(selector); if(!c)return;
+  const ctx=c.getContext("2d"),w=c.clientWidth||300,h=c.clientHeight||120,dpr=Math.min(devicePixelRatio||1,2);
+  c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+  const p={l:30,r:8,t:10,b:22},W=w-p.l-p.r,H=h-p.t-p.b;
+  const all=series.flatMap(s=>s.values.filter(valid).map(Number));
+  if(!all.length){ctx.fillStyle="#8ba5b1";ctx.font="9px Manrope";ctx.fillText("Veri bekleniyor",p.l+8,h/2);legend(c,series);return;}
+  let min=options.min??Math.min(...all),max=options.max??Math.max(...all);
+  if(min===max){min-=1;max+=1;}const margin=(max-min)*.12||1;
+  if(options.min===undefined)min-=margin;if(options.max===undefined)max+=margin;
+  ctx.font="8px Manrope";ctx.fillStyle="#8ba5b1";ctx.strokeStyle="#1d3949";ctx.lineWidth=1;
+  for(let j=0;j<4;j++){const y=p.t+H*j/3;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText(fmt(max-(max-min)*j/3,0),2,y+3);}
+  const count=Math.max(2,...series.map(s=>s.values.length));
+  series.forEach((s)=>{
+    const vals=s.values.map(v=>valid(v)?Number(v):NaN);
+    ctx.beginPath();ctx.strokeStyle=s.color||COLORS[0];ctx.lineWidth=1.65;let connected=false;
+    vals.forEach((v,i)=>{if(!Number.isFinite(v)){connected=false;return;}const x=p.l+W*i/(count-1),y=p.t+H*(max-v)/(max-min);if(!connected){ctx.moveTo(x,y);connected=true;}else ctx.lineTo(x,y);});
+    ctx.stroke();
+    if(options.points)vals.forEach((v,i)=>{if(!Number.isFinite(v))return;const x=p.l+W*i/(count-1),y=p.t+H*(max-v)/(max-min);ctx.fillStyle=s.color||COLORS[0];ctx.fillRect(x-1.5,y-1.5,3,3);});
+    if(options.windArrows&&s.directionValues){const stride=Math.max(1,Math.ceil(count/14));s.directionValues.forEach((deg,i)=>{if(!valid(deg)||!Number.isFinite(vals[i])||i%stride)return;const x=p.l+W*i/(count-1),y=p.t+H*(max-vals[i])/(max-min);ctx.save();ctx.translate(x,y-8);ctx.rotate((Number(deg)-90)*Math.PI/180);ctx.strokeStyle=s.color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-3,0);ctx.lineTo(4,0);ctx.moveTo(1,-2);ctx.lineTo(4,0);ctx.lineTo(1,2);ctx.stroke();ctx.restore();});}
+  });
+  [0,Math.floor((count-1)/2),count-1].forEach((i)=>{const label=options.labels?.[i]||"",x=p.l+W*i/(count-1);ctx.fillStyle="#8ba5b1";ctx.fillText(label,Math.min(Math.max(x-12,p.l),w-42),h-5);});
+  legend(c,series);
+}
+
+function metric(current,key,suffix="",digits=1){return valid(current?.[key])?fmt(current[key],digits)+suffix:"—";}
+function renderStation(station,source) {
+  const c=station?.current||{},has=Object.values(c).some(valid),ok=station?.status==="ok";
+  $("#station-temp").textContent=metric(c,"temperature","°");
+  $("#feels").textContent=metric(c,"feels_like","°");
+  $("#humidity").textContent=metric(c,"humidity","%",0);
+  $("#wind").textContent=valid(c.wind_speed)?fmt(c.wind_speed)+" km/sa "+direction(c.wind_direction):"—";
+  $("#dew").textContent=metric(c,"dew_point","°");
+  $("#rain").textContent=metric(c,"rain"," mm");
+  $("#pressure").textContent=metric(c,"pressure"," hPa");
+  $("#station-source").textContent=source;
+  $("#station-updated").textContent=has?"Son kaynak ölçümü: "+dateLabel(station.updated_at):(station?.error||"Ölçüm bekleniyor");
+  $("#station-age").textContent=ok?"Kaynak bağlantısı başarılı":station?.status==="stale"?"Son kayıt gösteriliyor · bağlantı kesik":"Veri alınamadı";
+  $("#station-icon").textContent=Number(c.temperature)<=2?"❄":Number(c.rain)>0?"🌧":"☁";
+  const history=station?.history||[];
+  $("#history-note").textContent=history.length?history.length+" arşiv kaydı · son 24 saat":"Henüz arşiv kaydı yok";
+  const labels=history.length?[0,Math.floor((history.length-1)/2),history.length-1].map((i)=>{const d=new Date(history[i]?.recorded_at);return Number.isNaN(d.getTime())?"":d.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});}):[];
+  drawChart("#historyChart",[{label:"Sıcaklık",color:COLORS[0],values:history.map(p=>p.temperature)}],{points:true,labels});
+}
+function align(run,times,key){const h=run?.hourly||{},lookup=new Map((h.time||[]).map((t,i)=>[t,h[key]?.[i]]));return times.map(t=>lookup.has(t)?lookup.get(t):null);}
+function runName(run){if(!run?.run)return "GFS";const d=new Date(run.run);return (run.run_cycle||String(d.getUTCHours()).padStart(2,"0")+"Z")+" · "+shortDate(run.run);}
+function multiSeries(runs,times,key){return runs.map((r,i)=>({label:runName(r),color:COLORS[i%4],values:align(r,times,key),directionValues:key==="wind_speed_10m"?align(r,times,"wind_direction_10m"):undefined}));}
+function rain3h(values,times){const out=[],labels=[];for(let i=0;i<values.length;i+=3){const block=values.slice(i,i+3);out.push(block.some(valid)?block.reduce((a,v)=>a+(valid(v)?Number(v):0),0):null);labels.push(times[i]?shortDate(times[i]):"");}return {values:out,labels};}
+
+function renderDaily(daily) {
+  const days=daily.time||[];if(!days.length)return;const host=$("#daily-grid");host.replaceChildren();
+  days.slice(0,8).forEach((time,i)=>{
+    const code=Number(daily.weather_code?.[i]),icon=code===0?"☀":code<=2?"🌤":code===3?"☁":code<60?"🌫":code<70?"🌧":code<80?"🌨":"⛈";
+    const card=document.createElement("div");card.className="daily-card";
+    const day=document.createElement("b");day.textContent=new Date(time+"T12:00:00").toLocaleDateString("tr-TR",{weekday:"short"});
+    const wx=document.createElement("div");wx.className="weather-icon";wx.textContent=icon;
+    const temp=document.createElement("div");temp.className="temps";temp.textContent=fmt(daily.temperature_2m_max?.[i],0)+"° / "+fmt(daily.temperature_2m_min?.[i],0)+"°";
+    const rain=document.createElement("small");rain.textContent="💧 "+fmt(daily.precipitation_sum?.[i])+" mm";
+    const wind=document.createElement("small");wind.textContent="↗ "+fmt(daily.wind_speed_10m_max?.[i],0)+" km/sa";
+    card.append(day,wx,temp,rain,wind);host.append(card);
+  });
+}
+
+function renderGfs(runs) {
+  if(!Array.isArray(runs)||!runs.length){$("#run-label").textContent="GFS çevrimi bekleniyor";$("#report-summary").textContent="Henüz tamamlanmış bir GFS çevrimi arşivlenmedi.";return;}
+  const latest=runs[0],h=latest.hourly||{},times=h.time||[],now=Date.now();
+  const next=times.map((time,index)=>({time,index,stamp:new Date(time).getTime()})).filter(x=>Number.isFinite(x.stamp)&&x.stamp>=now-3600000&&x.stamp<=now+72*3600000);
+  const take=(key)=>next.map(x=>h[key]?.[x.index]??null);
+  const topLabels=next.map((x,i)=>i%8===0?shortDate(x.time):"");
+  drawChart("#tempChart",[{label:runName(latest),color:COLORS[0],values:take("temperature_2m")}],{labels:topLabels});
+  const topRain=rain3h(take("precipitation"),next.map(x=>x.time));
+  drawChart("#rainChart",[{label:"3 saatlik yağış",color:COLORS[2],values:topRain.values}],{labels:topRain.labels,min:0});
+
+  const labels=times.map((t,i)=>i%12===0?shortDate(t):"");
+  const temp=multiSeries(runs,times,"temperature_2m");
+  const t850=multiSeries(runs,times,"temperature_850hPa");
+  const precip=multiSeries(runs,times,"precipitation").map(s=>Object.assign({},s,rain3h(s.values,times)));
+  const wind=multiSeries(runs,times,"wind_speed_10m");
+  drawChart("#chart2m",temp,{labels});
+  drawChart("#chart850",t850,{labels});
+  drawChart("#chartPrecip",precip,{labels:precip[0]?.labels||[],min:0});
+  drawChart("#chartWind",wind,{labels,min:0,windArrows:true});
+
+  $("#run-label").textContent="En yeni çevrim: "+runName(latest);
+  $("#report-time").textContent="GFS başlangıcı: "+latest.run+" · "+runs.length+" çevrim arşivde";
+  $("#model-status").style.background=runs.length>=4?"#85d6c4":"#e6b76d";
+  $("#report-summary").textContent="Son "+runs.length+" GFS çevrimi karşılaştırılıyor: "+runs.map(runName).join(" / ")+". Tahminler aynı geçerlilik zamanlarına hizalanmıştır.";
+  const events=next.map(x=>({time:x.time,value:h.precipitation?.[x.index]})).filter(x=>valid(x.value)&&Number(x.value)>=.2);
+  $("#rain-events").textContent=events.length?events.slice(0,8).map(x=>dateLabel(x.time)+" · "+fmt(x.value)+" mm").join(" | "):"Önümüzdeki 72 saatte anlamlı yağış sinyali yok.";
+  const pressure=take("pressure_msl").filter(valid).map(Number);
+  if(pressure.length){const delta=pressure.at(-1)-pressure[0];$("#pressure-analysis").textContent="Deniz seviyesi basıncı "+fmt(pressure[0])+" hPa seviyesinden "+fmt(pressure.at(-1))+" hPa seviyesine değişiyor ("+(delta>0?"+":"")+fmt(delta)+" hPa / 72 saat). "+(delta>2?"Basınç yükselişi":delta< -2?"Basınç düşüşü":"Belirgin basınç değişimi yok")+". Bu noktasal basınç eğilimidir; bölgesel yüksek/alçak merkez haritası değildir.";}
+  const t=take("temperature_2m").filter(valid).map(Number),p=take("precipitation").filter(valid).map(Number),w=take("wind_speed_10m").filter(valid).map(Number);
+  $("#written-report").textContent="En yeni arşivli GFS çevrimi "+latest.run+". Önümüzdeki 72 saatte sıcaklık "+(t.length?fmt(Math.min(...t))+"–"+fmt(Math.max(...t))+" °C":"hesaplanamadı")+", saatlik yağışların toplamı "+(p.length?fmt(p.reduce((a,b)=>a+b,0))+" mm":"hesaplanamadı")+", rüzgâr "+(w.length?fmt(Math.min(...w))+"–"+fmt(Math.max(...w))+" km/sa":"hesaplanamadı")+". Rüzgâr yönü grafikte oklarla gösterilir.";
+  renderDaily(latest.daily||{});
+}
+
+function renderDashboard(data){state.dashboard=data;const station=data.stations?.[state.station];renderStation(station,state.station==="enka"?"ENKA Balmumcu · Vantage PRO":"MGM · Eyüpsultan 18101");renderGfs(data.gfs?.runs||[]);}
+async function refreshAll(){
+  const button=$("#refresh");button.disabled=true;button.textContent="↻ Yenileniyor…";
+  try{const res=await fetch("./data/dashboard.json?t="+Date.now(),{cache:"no-store"});if(!res.ok)throw new Error("HTTP "+res.status);renderDashboard(await res.json());}
+  catch(err){$("#station-updated").textContent="Veri paketi okunamadı: "+err.message;$("#run-label").textContent="Veri bağlantısı bekleniyor";}
+  finally{button.disabled=false;button.textContent="↻ Verileri yenile";}
+}
+document.querySelectorAll("[data-station]").forEach(button=>button.addEventListener("click",()=>{
+  state.station=button.dataset.station;document.querySelectorAll("[data-station]").forEach(b=>b.classList.toggle("selected",b.dataset.station===state.station));if(state.dashboard)renderDashboard(state.dashboard);
+}));
+$("#refresh").addEventListener("click",refreshAll);
+window.addEventListener("resize",()=>{if(state.dashboard)renderDashboard(state.dashboard);});
+refreshAll();state.timer=window.setInterval(refreshAll,5*60*1000);
