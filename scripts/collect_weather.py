@@ -34,9 +34,14 @@ def fetch(url, headers=None, timeout=25):
     h = {"User-Agent": UA, "Accept": "*/*"}
     h.update(headers or {})
     req = urllib.request.Request(url, headers=h)
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        if response.status != 200: raise RuntimeError("HTTP %s: %s" % (response.status, url))
-        return response.read()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if response.status != 200:
+                raise RuntimeError("HTTP %s: %s" % (response.status, url))
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read(1600).decode("utf-8", errors="replace")
+        raise RuntimeError("HTTP %s: %s" % (exc.code, detail[:1000])) from exc
 
 def fetch_json(url, headers=None, timeout=25):
     try: return json.loads(fetch(url, headers, timeout).decode("utf-8-sig"))
@@ -214,6 +219,11 @@ def collect_enka(now):
                    "wind_speed":round(speed,1) if speed is not None else None,
                    "wind_direction":direction,"dew_point":dew,"rain":rain,
                    "pressure":pressure,"weather_code":None},
+        "parser_debug":{
+            "text_preview":text[:1800],
+            "labels_found":{name:(text.casefold().find(name.casefold())>=0) for name in
+                ("Günlük Sıcaklık","Hissedilen Sıcaklık","Bağıl Nem","Yoğuşma Noktası","Günlük Yağış","Rüzgar","Barometre (hPa)")}
+        },
         "error":None
     }
 
@@ -226,7 +236,7 @@ def cycle_candidates(now):
 def fetch_gfs(run_time):
     params = {
         "latitude":"41.014", "longitude":"28.950", "hourly":HOURLY, "daily":DAILY,
-        "models":"ncep_gfs025", "run":run_time.strftime("%Y-%m-%dT%H:00"),
+        "models":"ncep_gfs_global", "run":run_time.strftime("%Y-%m-%dT%H:00"),
         "forecast_days":"8", "timezone":"Europe/Istanbul",
         "wind_speed_unit":"kmh", "precipitation_unit":"mm", "temperature_unit":"celsius"
     }
@@ -239,7 +249,7 @@ def fetch_gfs(run_time):
         raise RuntimeError("GFS service returned unexpected coordinates")
     return {
         "run":run_time.strftime("%Y-%m-%dT%H:%MZ"), "run_cycle":run_time.strftime("%H")+"Z",
-        "fetched_at":stamp(), "model":"NCEP GFS 0.25°", "model_id":"ncep_gfs025",
+        "fetched_at":stamp(), "model":"NCEP GFS Global 0.11°/0.25°", "model_id":"ncep_gfs_global",
         "source":"Open-Meteo Single Runs API · NCEP GFS 0.25°",
         "latitude":payload.get("latitude"), "longitude":payload.get("longitude"),
         "elevation":payload.get("elevation"), "timezone":payload.get("timezone","Europe/Istanbul"),
@@ -292,7 +302,7 @@ def main():
     runs, gfs_errors = collect_gfs(old_runs if isinstance(old_runs,list) else [], now)
     dashboard["gfs"] = {
         "status":"ok" if runs else "unavailable", "updated_at":stamp(now) if runs else None,
-        "source":"NCEP GFS 0.25° · Open-Meteo Single Runs API",
+        "source":"NCEP GFS Global 0.11°/0.25° · Open-Meteo Single Runs API",
         "requested_coordinates":{"latitude":41.014,"longitude":28.950},
         "last_error":gfs_errors[0]["error"] if gfs_errors and not runs else None,
         "recent_errors":gfs_errors, "runs":runs
