@@ -1,0 +1,18 @@
+{
+  "station_id": "ENKA-BALMUMCU",
+  "station_name": "Balmumcu",
+  "source": "ENKA Vantage Pro",
+  "status": "unavailable",
+  "updated_at": null,
+  "current": {
+    "temperature": null,
+    "feels_like": null,
+    "humidity": null,
+    "wind_speed": null,
+    "wind_direction": null,
+    "dew_point": null,
+    "rain": null,
+    "pressure": null
+  },
+  "history": []
+}
