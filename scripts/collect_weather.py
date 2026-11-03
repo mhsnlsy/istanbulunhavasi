@@ -46,7 +46,9 @@ def num(value):
     if value is None or isinstance(value, bool): return None
     try: result = float(str(value).strip().replace(",", "."))
     except (TypeError, ValueError): return None
-    return result if math.isfinite(result) else None
+    if not math.isfinite(result) or abs(result) >= 9990:
+        return None
+    return result
 
 def dewpoint(temp, rh):
     if temp is None or rh is None or rh <= 0 or rh > 100: return None
@@ -158,7 +160,7 @@ def collect_mgm(now):
         "station_name": "Eyüpsultan", "latitude": 41.10,
         "longitude": 28.55, "elevation_m": 54,
         "source": "MGM · 18101 · servis.mgm.gov.tr",
-        "status": "ok", "updated_at": observed or stamp(now), "recorded_at": stamp(now),
+        "status": "ok", "updated_at": observed, "recorded_at": stamp(now), "fetched_at": stamp(now),
         "source_time": observed, "current": current, "error": None
     }
 
@@ -199,8 +201,8 @@ def collect_enka(now):
     return {
         "station_id":"ENKA-BALMUMCU", "station_name":"Balmumcu",
         "latitude":41.1, "longitude":28.9, "elevation_m":107,
-        "source":"ENKA · Vantage Pro", "status":"ok", "updated_at":source_time or stamp(now),
-        "recorded_at":stamp(now), "source_time":source_time,
+        "source":"ENKA · Vantage Pro", "status":"ok", "updated_at":source_time,
+        "recorded_at":stamp(now), "fetched_at":stamp(now), "source_time":source_time,
         "current":{"temperature":temp,"feels_like":feel,"humidity":humidity,
                    "wind_speed":round(speed,1) if speed is not None else None,
                    "wind_direction":direction,"dew_point":dew,"rain":rain,
