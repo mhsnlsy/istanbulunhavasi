@@ -3,6 +3,7 @@
 from __future__ import annotations
 import html, json, math, re, sys, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
+from collections import Counter, defaultdict
 from html.parser import HTMLParser
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -13,8 +14,7 @@ DASHBOARD = DATA / "dashboard.json"
 ISTANBUL = ZoneInfo("Europe/Istanbul")
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 MGM_HEADERS = {"Accept": "application/json, text/plain, */*", "Origin": "https://www.mgm.gov.tr", "Referer": "https://www.mgm.gov.tr/"}
-HOURLY = "temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,pressure_msl,wind_speed_10m,wind_direction_10m,temperature_850hPa"
-DAILY = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max"
+HOURLY = "temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,pressure_msl,wind_speed_10m,wind_direction_10m,temperature_850hPa,weather_code"
 
 def now_utc():
     return datetime.now(timezone.utc).replace(microsecond=0)
@@ -190,7 +190,14 @@ COMPASS = {"N":0,"NNE":22.5,"NE":45,"ENE":67.5,"E":90,"ESE":112.5,"SE":135,"SSE"
 
 def collect_enka(now):
     raw = fetch("https://w.enka.com/weather/currentvaluestr.html", {"Accept":"text/html,application/xhtml+xml"})
-    parser = TextParser(); parser.feed(raw.decode("utf-8", errors="replace"))
+    try:
+        decoded = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        decoded = raw.decode("cp1254", errors="replace")
+    # ENKA's Turkish page is served in Windows-1254 on some responses.
+    if "�" in decoded and b"\x96" in raw:
+        decoded = raw.decode("cp1254", errors="replace")
+    parser = TextParser(); parser.feed(decoded)
     text = html.unescape(" ".join(parser.parts))
     temp = after_label(text, "Günlük Sıcaklık", "°C")
     feel = after_label(text, "Hissedilen Sıcaklık", "°C")
@@ -233,9 +240,49 @@ def cycle_candidates(now):
     cursor = cursor.replace(hour=(cursor.hour // 6)*6, minute=0, second=0, microsecond=0)
     return [cursor - timedelta(hours=6*i) for i in range(12)]
 
+def aggregate_daily(hourly):
+    groups = defaultdict(lambda: {
+        "temperature":[], "precipitation":[], "wind":[], "weather":[]
+    })
+    times = hourly.get("time", [])
+    for index, value in enumerate(times):
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            local_day = dt.astimezone(ISTANBUL).date().isoformat()
+        except (TypeError, ValueError):
+            continue
+        group = groups[local_day]
+        for key, field in (
+            ("temperature", "temperature_2m"),
+            ("precipitation", "precipitation"),
+            ("wind", "wind_speed_10m"),
+            ("weather", "weather_code")
+        ):
+            values = hourly.get(field, [])
+            item = num(values[index]) if index < len(values) else None
+            if item is not None:
+                group[key].append(item)
+    result = {
+        "time":[], "temperature_2m_max":[], "temperature_2m_min":[],
+        "precipitation_sum":[], "wind_speed_10m_max":[], "weather_code":[]
+    }
+    for day in sorted(groups):
+        group = groups[day]
+        result["time"].append(day)
+        result["temperature_2m_max"].append(round(max(group["temperature"]),1) if group["temperature"] else None)
+        result["temperature_2m_min"].append(round(min(group["temperature"]),1) if group["temperature"] else None)
+        result["precipitation_sum"].append(round(sum(group["precipitation"]),1) if group["precipitation"] else None)
+        result["wind_speed_10m_max"].append(round(max(group["wind"]),1) if group["wind"] else None)
+        codes = [int(round(x)) for x in group["weather"]]
+        result["weather_code"].append(Counter(codes).most_common(1)[0][0] if codes else None)
+    return result
+
+
 def fetch_gfs(run_time):
     params = {
-        "latitude":"41.014", "longitude":"28.950", "hourly":HOURLY, "daily":DAILY,
+        "latitude":"41.014", "longitude":"28.950", "hourly":HOURLY,
         "models":"ncep_gfs_global", "run":run_time.strftime("%Y-%m-%dT%H:00"),
         "forecast_days":"8", "timezone":"Europe/Istanbul",
         "wind_speed_unit":"kmh", "precipitation_unit":"mm", "temperature_unit":"celsius"
@@ -253,8 +300,9 @@ def fetch_gfs(run_time):
         "source":"Open-Meteo Single Runs API · NCEP GFS 0.25°",
         "latitude":payload.get("latitude"), "longitude":payload.get("longitude"),
         "elevation":payload.get("elevation"), "timezone":payload.get("timezone","Europe/Istanbul"),
-        "hourly":hourly, "daily":payload.get("daily",{}),
-        "hourly_units":payload.get("hourly_units",{}), "daily_units":payload.get("daily_units",{})
+        "hourly":hourly, "daily":aggregate_daily(hourly),
+        "hourly_units":payload.get("hourly_units",{}),
+        "daily_units":{"temperature_2m_max":"°C","temperature_2m_min":"°C","precipitation_sum":"mm","wind_speed_10m_max":"km/h"}
     }
 
 def collect_gfs(existing, now):
