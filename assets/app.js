@@ -80,8 +80,8 @@ function renderDaily(daily) {
   });
 }
 
-function renderGfs(runs) {
-  if(!Array.isArray(runs)||!runs.length){$("#run-label").textContent="GFS çevrimi bekleniyor";$("#report-summary").textContent="Henüz tamamlanmış bir GFS çevrimi arşivlenmedi.";return;}
+function renderGfs(runs, error) {
+  if(!Array.isArray(runs)||!runs.length){$("#run-label").textContent="GFS verisi bekleniyor";$("#report-summary").textContent=error?"GFS verisi alınamadı: "+error:"Henüz tamamlanmış bir GFS çevrimi arşivlenmedi.";$("#model-status").style.background="#e6b76d";return;}
   const latest=runs[0],h=latest.hourly||{},times=h.time||[],now=Date.now();
   const next=times.map((time,index)=>({time,index,stamp:new Date(time).getTime()})).filter(x=>Number.isFinite(x.stamp)&&x.stamp>=now-3600000&&x.stamp<=now+72*3600000);
   const take=(key)=>next.map(x=>h[key]?.[x.index]??null);
@@ -113,7 +113,7 @@ function renderGfs(runs) {
   renderDaily(latest.daily||{});
 }
 
-function renderDashboard(data){state.dashboard=data;const station=data.stations?.[state.station];$(".station-title h2").textContent=state.station==="enka"?"Balmumcu · İstanbul":"Eyüpsultan · İstanbul";renderStation(station,state.station==="enka"?"ENKA Balmumcu · Vantage PRO":"MGM · Eyüpsultan 18101");renderGfs(data.gfs?.runs||[]);}
+function renderDashboard(data){state.dashboard=data;const station=data.stations?.[state.station];$(".station-title h2").textContent=state.station==="enka"?"Balmumcu · İstanbul":"Eyüpsultan · İstanbul";renderStation(station,state.station==="enka"?"ENKA Balmumcu · Vantage PRO":"MGM · Eyüpsultan 18101");renderGfs(data.gfs?.runs||[],data.gfs?.last_error);}
 async function refreshAll(){
   const button=$("#refresh");button.disabled=true;button.textContent="↻ Yenileniyor…";
   try{const res=await fetch("./data/dashboard.json?t="+Date.now(),{cache:"no-store"});if(!res.ok)throw new Error("HTTP "+res.status);renderDashboard(await res.json());}
