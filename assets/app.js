@@ -54,6 +54,7 @@ function renderStation(station,source) {
   $("#station-source").textContent=source;
   $("#station-updated").textContent=has?"Son kaynak ölçümü: "+dateLabel(station.updated_at):(station?.error||"Ölçüm bekleniyor");
   $("#station-age").textContent=ok?"Kaynak bağlantısı başarılı":station?.status==="stale"?"Son kayıt gösteriliyor · bağlantı kesik":"Veri alınamadı";
+  const livePill=$(".live"); if(livePill) livePill.innerHTML="<i></i> "+(ok?"CANLI ÖLÇÜM":station?.status==="stale"?"SON KAYIT":"VERİ BEKLENİYOR");
   $("#station-icon").textContent=Number(c.temperature)<=2?"❄":Number(c.rain)>0?"🌧":"☁";
   const history=station?.history||[];
   $("#history-note").textContent=history.length?history.length+" arşiv kaydı · son 24 saat":"Henüz arşiv kaydı yok";
@@ -112,7 +113,7 @@ function renderGfs(runs) {
   renderDaily(latest.daily||{});
 }
 
-function renderDashboard(data){state.dashboard=data;const station=data.stations?.[state.station];renderStation(station,state.station==="enka"?"ENKA Balmumcu · Vantage PRO":"MGM · Eyüpsultan 18101");renderGfs(data.gfs?.runs||[]);}
+function renderDashboard(data){state.dashboard=data;const station=data.stations?.[state.station];$(".station-title h2").textContent=state.station==="enka"?"Balmumcu · İstanbul":"Eyüpsultan · İstanbul";renderStation(station,state.station==="enka"?"ENKA Balmumcu · Vantage PRO":"MGM · Eyüpsultan 18101");renderGfs(data.gfs?.runs||[]);}
 async function refreshAll(){
   const button=$("#refresh");button.disabled=true;button.textContent="↻ Yenileniyor…";
   try{const res=await fetch("./data/dashboard.json?t="+Date.now(),{cache:"no-store"});if(!res.ok)throw new Error("HTTP "+res.status);renderDashboard(await res.json());}
