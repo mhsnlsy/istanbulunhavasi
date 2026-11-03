@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "updated_at": null,
+  "last_poll_at": null,
+  "stations": {
+    "mgm": {
+      "station_id": "18101",
+      "station_name": "Eyüpsultan",
+      "latitude": 41.1,
+      "longitude": 28.55,
+      "elevation_m": 54,
+      "source": "MGM · servis.mgm.gov.tr",
+      "status": "unavailable",
+      "updated_at": null,
+      "current": {
+        "temperature": null,
+        "feels_like": null,
+        "humidity": null,
+        "wind_speed": null,
+        "wind_direction": null,
+        "dew_point": null,
+        "rain": null,
+        "pressure": null
+      },
+      "history": [],
+      "error": "İlk MGM veri toplama çalışması bekleniyor."
+    },
+    "enka": {
+      "station_id": "ENKA-BALMUMCU",
+      "station_name": "Balmumcu",
+      "latitude": 41.1,
+      "longitude": 28.9,
+      "elevation_m": 107,
+      "source": "ENKA · Vantage Pro",
+      "status": "unavailable",
+      "updated_at": null,
+      "current": {
+        "temperature": null,
+        "feels_like": null,
+        "humidity": null,
+        "wind_speed": null,
+        "wind_direction": null,
+        "dew_point": null,
+        "rain": null,
+        "pressure": null
+      },
+      "history": [],
+      "error": "İlk ENKA veri toplama çalışması bekleniyor."
+    }
+  },
+  "gfs": {
+    "status": "unavailable",
+    "source": "NCEP GFS 0.25° · Open-Meteo Single Runs API",
+    "requested_coordinates": {
+      "latitude": 41.014,
+      "longitude": 28.95
+    },
+    "runs": []
+  }
+}
