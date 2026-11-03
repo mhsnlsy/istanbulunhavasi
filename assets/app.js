@@ -55,7 +55,7 @@ function renderStation(station,source) {
   $("#station-updated").textContent=has?"Son kaynak ölçümü: "+dateLabel(station.updated_at):(station?.error||"Ölçüm bekleniyor");
   $("#station-age").textContent=ok?"Kaynak bağlantısı başarılı":station?.status==="stale"?"Son kayıt gösteriliyor · bağlantı kesik":"Veri alınamadı";
   const livePill=$(".live"); if(livePill) livePill.innerHTML="<i></i> "+(ok?"CANLI ÖLÇÜM":station?.status==="stale"?"SON KAYIT":"VERİ BEKLENİYOR");
-  $("#station-icon").textContent=Number(c.temperature)<=2?"❄":Number(c.rain)>0?"🌧":"☁";
+  $("#station-icon").textContent=valid(c.temperature)&&Number(c.temperature)<=2?"❄":valid(c.rain)&&Number(c.rain)>0?"🌧":"☁";
   const history=station?.history||[];
   $("#history-note").textContent=history.length?history.length+" arşiv kaydı · son 24 saat":"Henüz arşiv kaydı yok";
   const labels=history.length?[0,Math.floor((history.length-1)/2),history.length-1].map((i)=>{const d=new Date(history[i]?.recorded_at);return Number.isNaN(d.getTime())?"":d.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});}):[];
@@ -69,7 +69,7 @@ function rain3h(values,times){const out=[],labels=[];for(let i=0;i<values.length
 function renderDaily(daily) {
   const days=daily.time||[];if(!days.length)return;const host=$("#daily-grid");host.replaceChildren();
   days.slice(0,8).forEach((time,i)=>{
-    const code=Number(daily.weather_code?.[i]),icon=code===0?"☀":code<=2?"🌤":code===3?"☁":code<60?"🌫":code<70?"🌧":code<80?"🌨":"⛈";
+    const code=Number(daily.weather_code?.[i]),hasCode=valid(daily.weather_code?.[i]),icon=!hasCode?"☁":code===0?"☀":code<=2?"🌤":code===3?"☁":code<60?"🌫":code<70?"🌧":code<80?"🌨":"⛈";
     const card=document.createElement("div");card.className="daily-card";
     const day=document.createElement("b");day.textContent=new Date(time+"T12:00:00").toLocaleDateString("tr-TR",{weekday:"short"});
     const wx=document.createElement("div");wx.className="weather-icon";wx.textContent=icon;
