@@ -330,7 +330,7 @@ def fetch_gfs(run_time):
     return {
         "run":run_time.strftime("%Y-%m-%dT%H:%MZ"), "run_cycle":run_time.strftime("%H")+"Z",
         "fetched_at":stamp(), "model":"NCEP GFS 0.11°", "model_id":GFS_MODEL_ID,
-        "source":"Open-Meteo Single Runs API · NCEP GFS 0.25°",
+        "source":"Open-Meteo Single Runs API · NCEP GFS 0.11°",
         "latitude":payload.get("latitude"), "longitude":payload.get("longitude"),
         "elevation":payload.get("elevation"), "timezone":payload.get("timezone","Europe/Istanbul"),
         "hourly":hourly, "daily":aggregate_daily(hourly),
